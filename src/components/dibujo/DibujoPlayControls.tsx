@@ -13,6 +13,7 @@ export default function DibujoPlayControls() {
   const [session, setSession] = useState<any>(null);
   const [gameState, setGameState] = useState<any>(null);
   const [player, setPlayer] = useState<any>(null);
+  const [teamPlayers, setTeamPlayers] = useState<any[]>([]);
 
   const [color, setColor] = useState("#000000");
   const [size, setSize] = useState(0.01);
@@ -55,9 +56,17 @@ export default function DibujoPlayControls() {
      const { data: p } = await supabase.from('dibujo_players').select('*').eq('id', pId).single();
      if(p) setPlayer(p);
 
+     const { data: tp } = await supabase.from('dibujo_players').select('*').eq('session_id', sId).eq('team_id', tId).order('created_at', { ascending: true });
+     if(tp) setTeamPlayers(tp);
+
      // Subscriptions
      supabase.channel(`p_sess_${sId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dibujo_sessions', filter: `id=eq.${sId}` }, (p) => setSession(p.new)).subscribe();
      supabase.channel(`p_gs_${sId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dibujo_game_state', filter: `session_id=eq.${sId}` }, (p) => setGameState(p.new)).subscribe();
+     supabase.channel(`p_team_${sId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'dibujo_players', filter: `session_id=eq.${sId}` }, async () => {
+         // Re-fetch to ensure sorted accuracy
+         const { data: newTp } = await supabase.from('dibujo_players').select('*').eq('session_id', sId).eq('team_id', tId).order('created_at', { ascending: true });
+         if (newTp) setTeamPlayers(newTp);
+     }).subscribe();
 
      // Broadcast
      const channel = supabase.channel(`dibujo_room_${sId}`);
@@ -254,12 +263,18 @@ export default function DibujoPlayControls() {
   }
 
   if (session.status === 'waiting') {
+     const playerIndex = teamPlayers.findIndex(p => p.id === playerId);
      return (
         <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center relative overflow-hidden">
            <h2 className="text-3xl font-black text-white mb-4 uppercase">¡Estás dentro!</h2>
            <div className="bg-[#1a1b26] p-8 rounded-3xl border border-white/10 shadow-2xl relative">
               <p className="text-gray-400 mb-2 font-bold uppercase">Equipo {teamId}</p>
-              <p className="text-4xl font-black text-pink-400 uppercase tracking-widest">{player.name}</p>
+              <p className="text-4xl font-black text-pink-400 uppercase tracking-widest mb-4">{player.name}</p>
+              {playerIndex !== -1 && (
+                 <div className="bg-pink-500/20 text-pink-300 py-2 px-6 rounded-full border border-pink-500/50 inline-block font-black uppercase tracking-wider">
+                    Tú eres el Jugador #{playerIndex + 1}
+                 </div>
+              )}
            </div>
            <p className="mt-8 text-xl text-gray-500 font-bold animate-pulse">Mira la pantalla principal para comenzar...</p>
         </div>

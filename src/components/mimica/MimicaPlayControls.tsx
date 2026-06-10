@@ -8,6 +8,7 @@ export default function MimicaPlayControls() {
   const [player, setPlayer] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [teamPlayers, setTeamPlayers] = useState<any[]>([]);
   const [currentWord, setCurrentWord] = useState<string>('');
 
   const playerId = typeof window !== 'undefined' ? localStorage.getItem('mimica_player_id') : null;
@@ -35,10 +36,21 @@ export default function MimicaPlayControls() {
            setGameState(payload.new);
         }
       }).subscribe();
+      
+    // Subscribe to player changes
+    const playersSub = supabase.channel(`mimica_players_client_${sessionId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mimica_players', filter: `session_id=eq.${sessionId}` }, async () => {
+         const { data: newTp } = await supabase.from('mimica_players').select('*').eq('session_id', sessionId).order('created_at', { ascending: true });
+         if (newTp) {
+             const tId = newTp.find(p => p.id === playerId)?.team_id;
+             if (tId) setTeamPlayers(newTp.filter(p => p.team_id === tId));
+         }
+      }).subscribe();
 
     return () => {
       supabase.removeChannel(sessionSub);
       supabase.removeChannel(stateSub);
+      supabase.removeChannel(playersSub);
     };
   }, []);
 
@@ -57,6 +69,12 @@ export default function MimicaPlayControls() {
       // Get Game State
       const { data: gsData } = await supabase.from('mimica_game_state').select('*').eq('session_id', sessionId).single();
       if (gsData) setGameState(gsData);
+
+      // Get Team Players
+      if (pData) {
+         const { data: tpData } = await supabase.from('mimica_players').select('*').eq('session_id', sessionId).eq('team_id', pData.team_id).order('created_at', { ascending: true });
+         if (tpData) setTeamPlayers(tpData);
+      }
 
       setLoading(false);
     } catch (err: any) {
@@ -100,10 +118,16 @@ export default function MimicaPlayControls() {
 
   // Render logic based on status
   if (session.status === 'waiting') {
+    const playerIndex = teamPlayers.findIndex(p => p.id === playerId);
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-[#111219] text-center">
          <h2 className="text-2xl font-black text-white mb-4 uppercase">Esperando a los demás...</h2>
-         <p className="text-orange-400 font-bold">Eres parte del Equipo {player.team_id}</p>
+         <p className="text-orange-400 font-bold mb-4">Eres parte del Equipo {player.team_id}</p>
+         {playerIndex !== -1 && (
+            <div className="bg-orange-500/20 text-orange-300 py-2 px-6 rounded-full border border-orange-500/50 inline-block font-black uppercase tracking-wider mb-4">
+               Tú eres el Jugador #{playerIndex + 1}
+            </div>
+         )}
          <div className="mt-8 animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500"></div>
       </div>
     );
