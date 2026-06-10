@@ -1,0 +1,309 @@
+import { useState, useEffect, useRef } from "react";
+import { supabase } from "../../supabase";
+import { FaPaintBrush, FaEraser, FaTrash, FaPaperPlane } from "react-icons/fa";
+
+export default function DibujoPlayControls() {
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [teamId, setTeamId] = useState<number | null>(null);
+  const [playerId, setPlayerId] = useState<string | null>(null);
+  
+  const [session, setSession] = useState<any>(null);
+  const [gameState, setGameState] = useState<any>(null);
+  const [player, setPlayer] = useState<any>(null);
+
+  const [color, setColor] = useState("#ffffff");
+  const [size, setSize] = useState(0.01);
+  const [guess, setGuess] = useState("");
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDrawing = useRef(false);
+  const lastPos = useRef<{x: number, y: number} | null>(null);
+  const broadcastChannelRef = useRef<any>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sId = params.get('session_id');
+    const tId = params.get('team_id');
+    const pId = params.get('player_id');
+    
+    if (sId && tId && pId) {
+      setSessionId(sId);
+      setTeamId(parseInt(tId, 10));
+      setPlayerId(pId);
+      initGame(sId, pId);
+    }
+  }, []);
+
+  const initGame = async (sId: string, pId: string) => {
+     // Fetch initial
+     const { data: s } = await supabase.from('dibujo_sessions').select('*').eq('id', sId).single();
+     if(s) setSession(s);
+     
+     const { data: gs } = await supabase.from('dibujo_game_state').select('*').eq('session_id', sId).single();
+     if(gs) setGameState(gs);
+
+     const { data: p } = await supabase.from('dibujo_players').select('*').eq('id', pId).single();
+     if(p) setPlayer(p);
+
+     // Subscriptions
+     supabase.channel(`p_sess_${sId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dibujo_sessions', filter: `id=eq.${sId}` }, (p) => setSession(p.new)).subscribe();
+     supabase.channel(`p_gs_${sId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dibujo_game_state', filter: `session_id=eq.${sId}` }, (p) => setGameState(p.new)).subscribe();
+
+     // Broadcast
+     const channel = supabase.channel(`dibujo_room_${sId}`);
+     channel.on('broadcast', { event: 'draw' }, (payload) => {
+        handleRemoteDraw(payload.payload);
+     });
+     channel.on('broadcast', { event: 'clear' }, () => {
+        const ctx = canvasRef.current?.getContext('2d');
+        if (ctx && canvasRef.current) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+     });
+     channel.subscribe();
+     broadcastChannelRef.current = channel;
+  };
+
+  const isDrawer = gameState?.active_drawer_id === playerId;
+
+  // Drawing logic
+  const getPos = (e: any) => {
+     const canvas = canvasRef.current;
+     if (!canvas) return { x: 0, y: 0 };
+     const rect = canvas.getBoundingClientRect();
+     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+     return {
+        x: (clientX - rect.left) / rect.width,
+        y: (clientY - rect.top) / rect.height
+     };
+  };
+
+  const startDrawing = (e: any) => {
+     if (!isDrawer) return;
+     isDrawing.current = true;
+     lastPos.current = getPos(e);
+  };
+
+  const draw = (e: any) => {
+     if (!isDrawer || !isDrawing.current || !lastPos.current || !canvasRef.current) return;
+     const currentPos = getPos(e);
+     
+     // Draw locally
+     const ctx = canvasRef.current.getContext('2d');
+     if (!ctx) return;
+     const w = canvasRef.current.width;
+     const h = canvasRef.current.height;
+
+     ctx.beginPath();
+     ctx.moveTo(lastPos.current.x * w, lastPos.current.y * h);
+     ctx.lineTo(currentPos.x * w, currentPos.y * h);
+     ctx.strokeStyle = color;
+     ctx.lineWidth = size * Math.min(w, h);
+     ctx.lineCap = 'round';
+     ctx.stroke();
+
+     // Broadcast
+     broadcastChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'draw',
+        payload: { p0: lastPos.current, p1: currentPos, color, size }
+     });
+
+     lastPos.current = currentPos;
+  };
+
+  const stopDrawing = () => {
+     isDrawing.current = false;
+     lastPos.current = null;
+  };
+
+  const handleRemoteDraw = (data: any) => {
+      if (isDrawer) return; // ignore if I am drawing
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      const { p0, p1, color, size: s } = data;
+      const w = canvas.width;
+      const h = canvas.height;
+      
+      ctx.beginPath();
+      ctx.moveTo(p0.x * w, p0.y * h);
+      ctx.lineTo(p1.x * w, p1.y * h);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = s * Math.min(w, h);
+      ctx.lineCap = 'round';
+      ctx.stroke();
+  };
+
+  const handleClear = () => {
+     const ctx = canvasRef.current?.getContext('2d');
+     if (ctx && canvasRef.current) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+     broadcastChannelRef.current?.send({ type: 'broadcast', event: 'clear', payload: {} });
+  };
+
+  const submitGuess = (e: React.FormEvent) => {
+     e.preventDefault();
+     if (!guess.trim() || isDrawer) return;
+     broadcastChannelRef.current?.send({
+        type: 'broadcast',
+        event: 'guess',
+        payload: { player_id: playerId, guess: guess.trim() }
+     });
+     setGuess("");
+  };
+
+  if (!session || !gameState || !player) {
+     return <div className="p-8 text-center text-gray-400 animate-pulse">Cargando...</div>;
+  }
+
+  if (session.status === 'waiting') {
+     return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center relative overflow-hidden">
+           <h2 className="text-3xl font-black text-white mb-4 uppercase">¡Estás dentro!</h2>
+           <div className="bg-[#1a1b26] p-8 rounded-3xl border border-white/10 shadow-2xl relative">
+              <p className="text-gray-400 mb-2 font-bold uppercase">Equipo {teamId}</p>
+              <p className="text-4xl font-black text-pink-400 uppercase tracking-widest">{player.name}</p>
+           </div>
+           <p className="mt-8 text-xl text-gray-500 font-bold animate-pulse">Mira la pantalla principal para comenzar...</p>
+        </div>
+     );
+  }
+
+  if (session.status === 'prep') {
+     return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center">
+           <h2 className="text-4xl font-black text-white mb-4 uppercase">Ronda {session.current_round}</h2>
+           <h3 className="text-3xl font-bold text-pink-500 mb-2 uppercase">
+              {session.active_team === teamId ? '¡ES TU TURNO DE JUGAR!' : `EQUIPO ${session.active_team} JUGANDO`}
+           </h3>
+           <p className="text-gray-400 text-lg font-bold">Prepárense...</p>
+        </div>
+     );
+  }
+
+  if (session.status === 'round_end') {
+      return (
+         <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center">
+            <h2 className="text-4xl font-black text-white mb-4 uppercase">Fin de la Ronda</h2>
+            <p className="text-gray-400 text-lg font-bold">Mira los puntajes en la pantalla principal.</p>
+         </div>
+      );
+  }
+
+  if (session.status === 'finished') {
+      return (
+         <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center">
+            <h2 className="text-4xl font-black text-white mb-4 uppercase">¡Juego Terminado!</h2>
+         </div>
+      );
+  }
+
+  // PLAYING STATE
+  const isMyTeam = session.active_team === teamId;
+
+  if (!isMyTeam) {
+     return (
+        <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center">
+           <h2 className="text-3xl font-black text-gray-500 mb-4 uppercase">Equipo {session.active_team} Dibujando</h2>
+           <p className="text-gray-600 font-bold">Espera tu turno.</p>
+        </div>
+     );
+  }
+
+  return (
+     <div className="flex flex-col min-h-screen">
+        <header className="bg-[#1a1b26] p-4 flex justify-between items-center border-b border-white/5">
+           <div className="flex items-center gap-2">
+              <span className="text-pink-500 font-black uppercase">{player.name}</span>
+           </div>
+           {isDrawer && (
+              <div className="bg-pink-500 text-white px-4 py-1 rounded-full text-sm font-black uppercase">
+                 Dibujando
+              </div>
+           )}
+        </header>
+
+        {isDrawer ? (
+           <div className="bg-pink-900/30 p-4 border-b border-pink-500/30 text-center">
+              <p className="text-sm font-bold text-pink-300 uppercase mb-1">Palabra a dibujar:</p>
+              <p className="text-3xl font-black text-white uppercase tracking-widest">{gameState.current_word}</p>
+           </div>
+        ) : (
+           <div className="bg-[#20222f] p-4 border-b border-white/10 text-center flex flex-col items-center">
+              <p className="text-sm font-bold text-gray-400 uppercase mb-2">Adivina la palabra:</p>
+              <div className="flex gap-2">
+                 {gameState.current_word?.split('').map((char: string, i: number) => (
+                    <div key={i} className={`w-8 h-10 flex items-end justify-center pb-1 ${char === ' ' ? '' : 'border-b-4 border-white'}`}>
+                       <span className="opacity-0">{char}</span>
+                    </div>
+                 ))}
+              </div>
+           </div>
+        )}
+
+        <div className="flex-1 flex flex-col p-4 bg-[#111219]">
+           <div className="relative w-full flex-1 bg-white rounded-xl overflow-hidden border-2 border-white/20 touch-none">
+              <canvas 
+                 ref={canvasRef}
+                 width={1000}
+                 height={800}
+                 className="w-full h-full object-contain cursor-crosshair touch-none"
+                 onMouseDown={startDrawing}
+                 onMouseMove={draw}
+                 onMouseUp={stopDrawing}
+                 onMouseOut={stopDrawing}
+                 onTouchStart={startDrawing}
+                 onTouchMove={draw}
+                 onTouchEnd={stopDrawing}
+                 onTouchCancel={stopDrawing}
+              />
+           </div>
+
+           {isDrawer ? (
+              <div className="mt-4 bg-[#1a1b26] p-4 rounded-xl border border-white/10 flex flex-wrap gap-4 items-center justify-between">
+                 <div className="flex gap-2">
+                    {["#ffffff", "#000000", "#ef4444", "#3b82f6", "#22c55e", "#eab308", "#d946ef"].map(c => (
+                       <button 
+                          key={c}
+                          onClick={() => setColor(c)}
+                          className={`w-8 h-8 rounded-full border-2 ${color === c ? 'border-white scale-110' : 'border-transparent'}`}
+                          style={{ backgroundColor: c }}
+                       />
+                    ))}
+                    <button onClick={() => setColor("#111219")} className={`w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white border-2 ${color === "#111219" ? 'border-white scale-110' : 'border-transparent'}`}>
+                       <FaEraser size={14}/>
+                    </button>
+                 </div>
+                 
+                 <div className="flex gap-4 items-center">
+                    <input 
+                       type="range" 
+                       min="0.005" max="0.05" step="0.005" 
+                       value={size} 
+                       onChange={e => setSize(parseFloat(e.target.value))} 
+                       className="w-24"
+                    />
+                    <button onClick={handleClear} className="w-10 h-10 bg-red-500/20 text-red-500 flex items-center justify-center rounded-xl hover:bg-red-500 hover:text-white transition-colors">
+                       <FaTrash />
+                    </button>
+                 </div>
+              </div>
+           ) : (
+              <form onSubmit={submitGuess} className="mt-4 flex gap-2">
+                 <input 
+                    type="text" 
+                    value={guess}
+                    onChange={(e) => setGuess(e.target.value)}
+                    placeholder="Escribe tu respuesta..."
+                    className="flex-1 bg-[#1a1b26] border-2 border-white/10 focus:border-pink-500 rounded-xl px-4 py-3 text-white text-lg font-bold outline-none uppercase"
+                 />
+                 <button type="submit" className="bg-pink-500 hover:bg-pink-400 text-white w-14 rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(236,72,153,0.4)]">
+                    <FaPaperPlane />
+                 </button>
+              </form>
+           )}
+        </div>
+     </div>
+  );
+}

@@ -1,0 +1,10 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import DibujoPlayControls from '../../components/dibujo/DibujoPlayControls';
+---
+
+<Layout title="Dibujo Extremo - Jugando">
+  <main class="w-screen min-h-screen bg-[#111219] text-white">
+     <DibujoPlayControls client:only="react" />
+  </main>
+</Layout>
