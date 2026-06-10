@@ -62,6 +62,22 @@ export default function DibujoPlayControls() {
      broadcastChannelRef.current = channel;
   };
 
+  // Resize canvas to fill container
+  useEffect(() => {
+     const resizeCanvas = () => {
+        if (!canvasRef.current) return;
+        const parent = canvasRef.current.parentElement;
+        if (parent) {
+           canvasRef.current.width = parent.clientWidth;
+           canvasRef.current.height = parent.clientHeight;
+        }
+     };
+     // Delay slightly to ensure layout is done
+     setTimeout(resizeCanvas, 100);
+     window.addEventListener('resize', resizeCanvas);
+     return () => window.removeEventListener('resize', resizeCanvas);
+  }, []);
+
   const isDrawer = gameState?.active_drawer_id === playerId;
 
   // Drawing logic
@@ -171,13 +187,16 @@ export default function DibujoPlayControls() {
   }
 
   if (session.status === 'prep') {
+     // Determine who plays by looking at session.current_round and teamId
+     // Note: We don't have the full team array here easily, so we just say "Prepárense"
+     // The main dashboard shows exactly who draws.
      return (
         <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center">
            <h2 className="text-4xl font-black text-white mb-4 uppercase">Ronda {session.current_round}</h2>
            <h3 className="text-3xl font-bold text-pink-500 mb-2 uppercase">
-              {session.active_team === teamId ? '¡ES TU TURNO DE JUGAR!' : `EQUIPO ${session.active_team} JUGANDO`}
+              {session.active_team === teamId ? '¡ES EL TURNO DE TU EQUIPO!' : `EQUIPO ${session.active_team} JUGANDO`}
            </h3>
-           <p className="text-gray-400 text-lg font-bold">Prepárense...</p>
+           <p className="text-gray-400 text-lg font-bold">Prepárense... ¡Miren la pantalla principal!</p>
         </div>
      );
   }
@@ -243,12 +262,10 @@ export default function DibujoPlayControls() {
         )}
 
         <div className="flex-1 flex flex-col p-4 bg-[#111219]">
-           <div className="relative w-full flex-1 bg-white rounded-xl overflow-hidden border-2 border-white/20 touch-none">
+           <div className="relative w-full flex-1 bg-white rounded-xl overflow-hidden border-2 border-white/20 touch-none" style={{ touchAction: 'none' }}>
               <canvas 
                  ref={canvasRef}
-                 width={1000}
-                 height={800}
-                 className="w-full h-full object-contain cursor-crosshair touch-none"
+                 className="absolute inset-0 w-full h-full cursor-crosshair touch-none"
                  onMouseDown={startDrawing}
                  onMouseMove={draw}
                  onMouseUp={stopDrawing}
@@ -257,6 +274,7 @@ export default function DibujoPlayControls() {
                  onTouchMove={draw}
                  onTouchEnd={stopDrawing}
                  onTouchCancel={stopDrawing}
+                 style={{ touchAction: 'none' }}
               />
            </div>
 
