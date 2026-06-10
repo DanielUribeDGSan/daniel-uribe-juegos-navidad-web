@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { FaEraser, FaTrash } from "react-icons/fa";
 
 export default function TestDrawControls() {
-  const [color, setColor] = useState("#ffffff");
+  const [color, setColor] = useState("#000000");
   const [size, setSize] = useState(0.01);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);

@@ -11,7 +11,7 @@ export default function DibujoPlayControls() {
   const [gameState, setGameState] = useState<any>(null);
   const [player, setPlayer] = useState<any>(null);
 
-  const [color, setColor] = useState("#ffffff");
+  const [color, setColor] = useState("#000000");
   const [size, setSize] = useState(0.01);
   const [guess, setGuess] = useState("");
 
