@@ -1,10 +1,19 @@
 ---
-import Layout from '../../layouts/Layout.astro';
 import DibujoPlayControls from '../../components/dibujo/DibujoPlayControls';
+import '../../styles/global.css';
 ---
 
-<Layout title="Dibujo Extremo - Jugando">
-  <main class="w-screen min-h-screen bg-[#111219] text-white">
-     <DibujoPlayControls client:only="react" />
-  </main>
-</Layout>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+		<meta name="generator" content={Astro.generator} />
+		<title>Dibujo Extremo - Jugando</title>
+	</head>
+	<body>
+      <main class="w-screen min-h-screen bg-[#111219] text-white">
+         <DibujoPlayControls client:only="react" />
+      </main>
+	</body>
+</html>

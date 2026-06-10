@@ -1,15 +1,24 @@
 ---
-import Layout from '../../layouts/Layout.astro';
 import DibujoJoinForm from '../../components/dibujo/DibujoJoinForm';
+import '../../styles/global.css';
 ---
 
-<Layout title="Dibujo Extremo - Unirse al Equipo">
-  <main class="w-screen min-h-screen bg-[#111219] flex items-center justify-center p-4">
-     <div class="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-        <div class="absolute top-0 inset-x-0 h-64 bg-gradient-to-b from-pink-900/20 to-transparent"></div>
-     </div>
-     <div class="relative z-10 w-full max-w-md">
-       <DibujoJoinForm client:only="react" />
-     </div>
-  </main>
-</Layout>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+		<meta name="generator" content={Astro.generator} />
+		<title>Dibujo Extremo - Unirse al Equipo</title>
+	</head>
+	<body>
+      <main class="w-screen min-h-screen bg-[#111219] flex items-center justify-center p-4">
+         <div class="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+            <div class="absolute top-0 inset-x-0 h-64 bg-gradient-to-b from-pink-900/20 to-transparent"></div>
+         </div>
+         <div class="relative z-10 w-full max-w-md">
+           <DibujoJoinForm client:only="react" />
+         </div>
+      </main>
+	</body>
+</html>
