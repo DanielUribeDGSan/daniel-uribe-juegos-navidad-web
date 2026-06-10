@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../../lib/supabase";
-import { FaPaintBrush, FaEraser, FaTrash, FaPaperPlane } from "react-icons/fa";
+import { FaEraser, FaTrash, FaPaperPlane, FaUndo, FaRedo } from "react-icons/fa";
+
+type Point = { x: number, y: number };
+type Stroke = { color: string, size: number, points: Point[] };
 
 export default function DibujoPlayControls() {
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -17,8 +20,12 @@ export default function DibujoPlayControls() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
-  const lastPos = useRef<{x: number, y: number} | null>(null);
+  const lastPos = useRef<Point | null>(null);
+  const currentStroke = useRef<Stroke | null>(null);
   const broadcastChannelRef = useRef<any>(null);
+
+  const [history, setHistory] = useState<Stroke[]>([]);
+  const [redoQueue, setRedoQueue] = useState<Stroke[]>([]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -54,9 +61,14 @@ export default function DibujoPlayControls() {
      channel.on('broadcast', { event: 'draw' }, (payload) => {
         handleRemoteDraw(payload.payload);
      });
+     channel.on('broadcast', { event: 'replace_state' }, (payload) => {
+        if (!isDrawer) redrawAllStrokes(payload.payload.strokes);
+     });
      channel.on('broadcast', { event: 'clear' }, () => {
-        const ctx = canvasRef.current?.getContext('2d');
-        if (ctx && canvasRef.current) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        if (!isDrawer) {
+           const ctx = canvasRef.current?.getContext('2d');
+           if (ctx && canvasRef.current) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        }
      });
      channel.subscribe();
      broadcastChannelRef.current = channel;
@@ -96,11 +108,16 @@ export default function DibujoPlayControls() {
   const startDrawing = (e: any) => {
      if (!isDrawer) return;
      isDrawing.current = true;
-     lastPos.current = getPos(e);
+     const pos = getPos(e);
+     lastPos.current = pos;
+     currentStroke.current = { color, size, points: [pos] };
+     
+     // Clear redo queue when new action starts
+     if (redoQueue.length > 0) setRedoQueue([]);
   };
 
   const draw = (e: any) => {
-     if (!isDrawer || !isDrawing.current || !lastPos.current || !canvasRef.current) return;
+     if (!isDrawer || !isDrawing.current || !lastPos.current || !canvasRef.current || !currentStroke.current) return;
      const currentPos = getPos(e);
      
      // Draw locally
@@ -116,8 +133,10 @@ export default function DibujoPlayControls() {
      ctx.lineWidth = size * Math.min(w, h);
      ctx.lineCap = 'round';
      ctx.stroke();
+     
+     currentStroke.current.points.push(currentPos);
 
-     // Broadcast
+     // Broadcast segment
      broadcastChannelRef.current?.send({
         type: 'broadcast',
         event: 'draw',
@@ -128,8 +147,69 @@ export default function DibujoPlayControls() {
   };
 
   const stopDrawing = () => {
+     if (!isDrawer || !isDrawing.current) return;
      isDrawing.current = false;
      lastPos.current = null;
+     if (currentStroke.current) {
+        setHistory(prev => [...prev, currentStroke.current!]);
+        currentStroke.current = null;
+     }
+  };
+
+  const redrawAllStrokes = (strokes: Stroke[]) => {
+     const canvas = canvasRef.current;
+     if (!canvas) return;
+     const ctx = canvas.getContext('2d');
+     if (!ctx) return;
+     
+     const w = canvas.width;
+     const h = canvas.height;
+     ctx.clearRect(0, 0, w, h);
+     
+     strokes.forEach(s => {
+        if (s.points.length < 2) return;
+        ctx.beginPath();
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = s.size * Math.min(w, h);
+        ctx.lineCap = 'round';
+        
+        ctx.moveTo(s.points[0].x * w, s.points[0].y * h);
+        for (let i = 1; i < s.points.length; i++) {
+           ctx.lineTo(s.points[i].x * w, s.points[i].y * h);
+        }
+        ctx.stroke();
+     });
+  };
+
+  const handleUndo = () => {
+     if (history.length === 0) return;
+     const newHistory = [...history];
+     const popped = newHistory.pop()!;
+     setHistory(newHistory);
+     setRedoQueue(prev => [...prev, popped]);
+     
+     redrawAllStrokes(newHistory);
+     broadcastChannelRef.current?.send({ type: 'broadcast', event: 'replace_state', payload: { strokes: newHistory } });
+  };
+
+  const handleRedo = () => {
+     if (redoQueue.length === 0) return;
+     const newRedo = [...redoQueue];
+     const popped = newRedo.pop()!;
+     setRedoQueue(newRedo);
+     const newHistory = [...history, popped];
+     setHistory(newHistory);
+     
+     redrawAllStrokes(newHistory);
+     broadcastChannelRef.current?.send({ type: 'broadcast', event: 'replace_state', payload: { strokes: newHistory } });
+  };
+
+  const handleClear = () => {
+     setHistory([]);
+     setRedoQueue([]);
+     const ctx = canvasRef.current?.getContext('2d');
+     if (ctx && canvasRef.current) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+     broadcastChannelRef.current?.send({ type: 'broadcast', event: 'clear', payload: {} });
   };
 
   const handleRemoteDraw = (data: any) => {
@@ -152,10 +232,24 @@ export default function DibujoPlayControls() {
       ctx.stroke();
   };
 
-  const handleClear = () => {
-     const ctx = canvasRef.current?.getContext('2d');
-     if (ctx && canvasRef.current) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-     broadcastChannelRef.current?.send({ type: 'broadcast', event: 'clear', payload: {} });
+  const handleRemoteDraw = (data: any) => {
+      if (isDrawer) return; // ignore if I am drawing
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      const { p0, p1, color, size: s } = data;
+      const w = canvas.width;
+      const h = canvas.height;
+      
+      ctx.beginPath();
+      ctx.moveTo(p0.x * w, p0.y * h);
+      ctx.lineTo(p1.x * w, p1.y * h);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = s * Math.min(w, h);
+      ctx.lineCap = 'round';
+      ctx.stroke();
   };
 
   const submitGuess = (e: React.FormEvent) => {
@@ -281,7 +375,7 @@ export default function DibujoPlayControls() {
            {isDrawer ? (
               <div className="mt-4 bg-[#1a1b26] p-4 rounded-xl border border-white/10 flex flex-wrap gap-4 items-center justify-between">
                  <div className="flex gap-2">
-                    {["#ffffff", "#000000", "#ef4444", "#3b82f6", "#22c55e", "#eab308", "#d946ef"].map(c => (
+                    {["#000000", "#ef4444", "#3b82f6", "#22c55e", "#eab308", "#d946ef"].map(c => (
                        <button 
                           key={c}
                           onClick={() => setColor(c)}
@@ -289,12 +383,12 @@ export default function DibujoPlayControls() {
                           style={{ backgroundColor: c }}
                        />
                     ))}
-                    <button onClick={() => setColor("#111219")} className={`w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white border-2 ${color === "#111219" ? 'border-white scale-110' : 'border-transparent'}`}>
+                    <button onClick={() => setColor("#ffffff")} className={`w-8 h-8 rounded-full bg-white flex items-center justify-center text-black border-2 shadow-[inset_0_0_5px_rgba(0,0,0,0.5)] ${color === "#ffffff" ? 'border-pink-500 scale-110' : 'border-gray-300'}`}>
                        <FaEraser size={14}/>
                     </button>
                  </div>
                  
-                 <div className="flex gap-4 items-center">
+                 <div className="flex gap-4 items-center w-full justify-between mt-2 sm:mt-0 sm:w-auto">
                     <input 
                        type="range" 
                        min="0.005" max="0.05" step="0.005" 
@@ -302,9 +396,17 @@ export default function DibujoPlayControls() {
                        onChange={e => setSize(parseFloat(e.target.value))} 
                        className="w-24"
                     />
-                    <button onClick={handleClear} className="w-10 h-10 bg-red-500/20 text-red-500 flex items-center justify-center rounded-xl hover:bg-red-500 hover:text-white transition-colors">
-                       <FaTrash />
-                    </button>
+                    <div className="flex gap-2">
+                       <button onClick={handleUndo} disabled={history.length === 0} className="w-10 h-10 bg-gray-500/20 text-gray-300 flex items-center justify-center rounded-xl hover:bg-gray-500 hover:text-white transition-colors disabled:opacity-30">
+                          <FaUndo />
+                       </button>
+                       <button onClick={handleRedo} disabled={redoQueue.length === 0} className="w-10 h-10 bg-gray-500/20 text-gray-300 flex items-center justify-center rounded-xl hover:bg-gray-500 hover:text-white transition-colors disabled:opacity-30">
+                          <FaRedo />
+                       </button>
+                       <button onClick={handleClear} className="w-10 h-10 bg-red-500/20 text-red-500 flex items-center justify-center rounded-xl hover:bg-red-500 hover:text-white transition-colors ml-2">
+                          <FaTrash />
+                       </button>
+                    </div>
                  </div>
               </div>
            ) : (

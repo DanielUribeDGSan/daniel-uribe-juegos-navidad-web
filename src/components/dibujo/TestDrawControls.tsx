@@ -1,12 +1,19 @@
 import { useState, useRef, useEffect } from "react";
-import { FaEraser, FaTrash } from "react-icons/fa";
+import { FaEraser, FaTrash, FaUndo, FaRedo } from "react-icons/fa";
+
+type Point = { x: number, y: number };
+type Stroke = { color: string, size: number, points: Point[] };
 
 export default function TestDrawControls() {
   const [color, setColor] = useState("#000000");
   const [size, setSize] = useState(0.01);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
-  const lastPos = useRef<{x: number, y: number} | null>(null);
+  const lastPos = useRef<Point | null>(null);
+  const currentStroke = useRef<Stroke | null>(null);
+
+  const [history, setHistory] = useState<Stroke[]>([]);
+  const [redoQueue, setRedoQueue] = useState<Stroke[]>([]);
 
   // Resize canvas to fill container
   useEffect(() => {
@@ -37,11 +44,14 @@ export default function TestDrawControls() {
 
   const startDrawing = (e: any) => {
      isDrawing.current = true;
-     lastPos.current = getPos(e);
+     const pos = getPos(e);
+     lastPos.current = pos;
+     currentStroke.current = { color, size, points: [pos] };
+     if (redoQueue.length > 0) setRedoQueue([]);
   };
 
   const draw = (e: any) => {
-     if (!isDrawing.current || !lastPos.current || !canvasRef.current) return;
+     if (!isDrawing.current || !lastPos.current || !canvasRef.current || !currentStroke.current) return;
      const currentPos = getPos(e);
      const ctx = canvasRef.current.getContext('2d');
      if (!ctx) return;
@@ -57,15 +67,67 @@ export default function TestDrawControls() {
      ctx.lineCap = 'round';
      ctx.stroke();
 
+     currentStroke.current.points.push(currentPos);
      lastPos.current = currentPos;
   };
 
   const stopDrawing = () => {
+     if (!isDrawing.current) return;
      isDrawing.current = false;
      lastPos.current = null;
+     if (currentStroke.current) {
+        setHistory(prev => [...prev, currentStroke.current!]);
+        currentStroke.current = null;
+     }
+  };
+
+  const redrawAllStrokes = (strokes: Stroke[]) => {
+     const canvas = canvasRef.current;
+     if (!canvas) return;
+     const ctx = canvas.getContext('2d');
+     if (!ctx) return;
+     
+     const w = canvas.width;
+     const h = canvas.height;
+     ctx.clearRect(0, 0, w, h);
+     
+     strokes.forEach(s => {
+        if (s.points.length < 2) return;
+        ctx.beginPath();
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = s.size * Math.min(w, h);
+        ctx.lineCap = 'round';
+        
+        ctx.moveTo(s.points[0].x * w, s.points[0].y * h);
+        for (let i = 1; i < s.points.length; i++) {
+           ctx.lineTo(s.points[i].x * w, s.points[i].y * h);
+        }
+        ctx.stroke();
+     });
+  };
+
+  const handleUndo = () => {
+     if (history.length === 0) return;
+     const newHistory = [...history];
+     const popped = newHistory.pop()!;
+     setHistory(newHistory);
+     setRedoQueue(prev => [...prev, popped]);
+     redrawAllStrokes(newHistory);
+  };
+
+  const handleRedo = () => {
+     if (redoQueue.length === 0) return;
+     const newRedo = [...redoQueue];
+     const popped = newRedo.pop()!;
+     setRedoQueue(newRedo);
+     const newHistory = [...history, popped];
+     setHistory(newHistory);
+     redrawAllStrokes(newHistory);
   };
 
   const handleClear = () => {
+     setHistory([]);
+     setRedoQueue([]);
      const ctx = canvasRef.current?.getContext('2d');
      if (ctx && canvasRef.current) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
   };
@@ -96,7 +158,7 @@ export default function TestDrawControls() {
 
            <div className="mt-4 bg-[#1a1b26] p-4 rounded-xl border border-white/10 flex flex-wrap gap-4 items-center justify-between">
               <div className="flex gap-2">
-                 {["#ffffff", "#000000", "#ef4444", "#3b82f6", "#22c55e", "#eab308", "#d946ef"].map(c => (
+                 {["#000000", "#ef4444", "#3b82f6", "#22c55e", "#eab308", "#d946ef"].map(c => (
                     <button 
                        key={c}
                        onClick={() => setColor(c)}
@@ -104,12 +166,12 @@ export default function TestDrawControls() {
                        style={{ backgroundColor: c }}
                     />
                  ))}
-                 <button onClick={() => setColor("#111219")} className={`w-8 h-8 rounded-full bg-gray-500 flex items-center justify-center text-white border-2 ${color === "#111219" ? 'border-white scale-110' : 'border-transparent'}`}>
+                 <button onClick={() => setColor("#ffffff")} className={`w-8 h-8 rounded-full bg-white flex items-center justify-center text-black border-2 shadow-[inset_0_0_5px_rgba(0,0,0,0.5)] ${color === "#ffffff" ? 'border-pink-500 scale-110' : 'border-gray-300'}`}>
                     <FaEraser size={14}/>
                  </button>
               </div>
               
-              <div className="flex gap-4 items-center">
+              <div className="flex gap-4 items-center w-full justify-between mt-2 sm:mt-0 sm:w-auto">
                  <input 
                     type="range" 
                     min="0.005" max="0.05" step="0.005" 
@@ -117,9 +179,17 @@ export default function TestDrawControls() {
                     onChange={e => setSize(parseFloat(e.target.value))} 
                     className="w-24"
                  />
-                 <button onClick={handleClear} className="w-10 h-10 bg-red-500/20 text-red-500 flex items-center justify-center rounded-xl hover:bg-red-500 hover:text-white transition-colors">
-                    <FaTrash />
-                 </button>
+                 <div className="flex gap-2">
+                    <button onClick={handleUndo} disabled={history.length === 0} className="w-10 h-10 bg-gray-500/20 text-gray-300 flex items-center justify-center rounded-xl hover:bg-gray-500 hover:text-white transition-colors disabled:opacity-30">
+                       <FaUndo />
+                    </button>
+                    <button onClick={handleRedo} disabled={redoQueue.length === 0} className="w-10 h-10 bg-gray-500/20 text-gray-300 flex items-center justify-center rounded-xl hover:bg-gray-500 hover:text-white transition-colors disabled:opacity-30">
+                       <FaRedo />
+                    </button>
+                    <button onClick={handleClear} className="w-10 h-10 bg-red-500/20 text-red-500 flex items-center justify-center rounded-xl hover:bg-red-500 hover:text-white transition-colors ml-2">
+                       <FaTrash />
+                    </button>
+                 </div>
               </div>
            </div>
         </div>
