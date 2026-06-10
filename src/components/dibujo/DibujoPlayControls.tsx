@@ -232,25 +232,7 @@ export default function DibujoPlayControls() {
       ctx.stroke();
   };
 
-  const handleRemoteDraw = (data: any) => {
-      if (isDrawer) return; // ignore if I am drawing
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      
-      const { p0, p1, color, size: s } = data;
-      const w = canvas.width;
-      const h = canvas.height;
-      
-      ctx.beginPath();
-      ctx.moveTo(p0.x * w, p0.y * h);
-      ctx.lineTo(p1.x * w, p1.y * h);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = s * Math.min(w, h);
-      ctx.lineCap = 'round';
-      ctx.stroke();
-  };
+
 
   const submitGuess = (e: React.FormEvent) => {
      e.preventDefault();
