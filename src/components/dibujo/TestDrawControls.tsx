@@ -14,6 +14,9 @@ export default function TestDrawControls() {
 
   const [history, setHistory] = useState<Stroke[]>([]);
   const [redoQueue, setRedoQueue] = useState<Stroke[]>([]);
+  
+  const historyRef = useRef<Stroke[]>([]);
+  useEffect(() => { historyRef.current = history; }, [history]);
 
   // Resize canvas to fill container
   useEffect(() => {
@@ -21,12 +24,14 @@ export default function TestDrawControls() {
         if (!canvasRef.current) return;
         const parent = canvasRef.current.parentElement;
         if (parent) {
-           canvasRef.current.width = parent.clientWidth;
-           canvasRef.current.height = parent.clientHeight;
+           const dpr = window.devicePixelRatio || 1;
+           canvasRef.current.width = parent.clientWidth * dpr;
+           canvasRef.current.height = parent.clientHeight * dpr;
+           if (historyRef.current) redrawAllStrokes(historyRef.current);
         }
      };
+     setTimeout(resizeCanvas, 100);
      window.addEventListener('resize', resizeCanvas);
-     resizeCanvas();
      return () => window.removeEventListener('resize', resizeCanvas);
   }, []);
 
@@ -72,7 +77,6 @@ export default function TestDrawControls() {
   };
 
   const stopDrawing = () => {
-     if (!isDrawing.current) return;
      isDrawing.current = false;
      lastPos.current = null;
      if (currentStroke.current) {

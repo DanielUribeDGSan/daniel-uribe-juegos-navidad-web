@@ -26,6 +26,9 @@ export default function DibujoPlayControls() {
 
   const [history, setHistory] = useState<Stroke[]>([]);
   const [redoQueue, setRedoQueue] = useState<Stroke[]>([]);
+  
+  const historyRef = useRef<Stroke[]>([]);
+  useEffect(() => { historyRef.current = history; }, [history]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -80,8 +83,10 @@ export default function DibujoPlayControls() {
         if (!canvasRef.current) return;
         const parent = canvasRef.current.parentElement;
         if (parent) {
-           canvasRef.current.width = parent.clientWidth;
-           canvasRef.current.height = parent.clientHeight;
+           const dpr = window.devicePixelRatio || 1;
+           canvasRef.current.width = parent.clientWidth * dpr;
+           canvasRef.current.height = parent.clientHeight * dpr;
+           if (historyRef.current) redrawAllStrokes(historyRef.current);
         }
      };
      // Delay slightly to ensure layout is done
@@ -147,7 +152,6 @@ export default function DibujoPlayControls() {
   };
 
   const stopDrawing = () => {
-     if (!isDrawer || !isDrawing.current) return;
      isDrawing.current = false;
      lastPos.current = null;
      if (currentStroke.current) {
