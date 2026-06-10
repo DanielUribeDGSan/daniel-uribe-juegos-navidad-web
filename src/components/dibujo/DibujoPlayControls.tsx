@@ -41,11 +41,11 @@ export default function DibujoPlayControls() {
       setSessionId(sId);
       setTeamId(parseInt(tId, 10));
       setPlayerId(pId);
-      initGame(sId, pId);
+      initGame(sId, pId, tId);
     }
   }, []);
 
-  const initGame = async (sId: string, pId: string) => {
+  const initGame = async (sId: string, pId: string, tIdStr: string) => {
      // Fetch initial
      const { data: s } = await supabase.from('dibujo_sessions').select('*').eq('id', sId).single();
      if(s) setSession(s);
@@ -56,7 +56,7 @@ export default function DibujoPlayControls() {
      const { data: p } = await supabase.from('dibujo_players').select('*').eq('id', pId).single();
      if(p) setPlayer(p);
 
-     const parsedTeamId = parseInt(tId, 10);
+     const parsedTeamId = parseInt(tIdStr, 10);
      const { data: tp } = await supabase.from('dibujo_players').select('*').eq('session_id', sId).eq('team_id', parsedTeamId).order('joined_at', { ascending: true });
      if(tp) setTeamPlayers(tp);
 
@@ -69,7 +69,7 @@ export default function DibujoPlayControls() {
      }).subscribe();
      supabase.channel(`p_team_${sId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'dibujo_players' }, async (p) => {
          if (p.new?.session_id === sId || p.old?.session_id === sId) {
-             const parsedTeamId = parseInt(tId, 10);
+             const parsedTeamId = parseInt(tIdStr, 10);
              const { data: newTp } = await supabase.from('dibujo_players').select('*').eq('session_id', sId).eq('team_id', parsedTeamId).order('joined_at', { ascending: true });
              if (newTp) setTeamPlayers(newTp);
          }
