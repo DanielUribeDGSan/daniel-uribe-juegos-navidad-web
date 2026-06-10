@@ -26,14 +26,14 @@ export default function MimicaPlayControls() {
     // Subscribe to session changes
     const sessionSub = supabase.channel(`mimica_session_${sessionId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'mimica_sessions', filter: `id=eq.${sessionId}` }, (payload) => {
-        setSession(payload.new);
+        setSession((prev: any) => ({...prev, ...payload.new}));
       }).subscribe();
 
     // Subscribe to game state changes
     const stateSub = supabase.channel(`mimica_state_${sessionId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mimica_game_state', filter: `session_id=eq.${sessionId}` }, (payload) => {
         if (payload.new) {
-           setGameState(payload.new);
+           setGameState((prev: any) => ({...prev, ...payload.new}));
         }
       }).subscribe();
       
@@ -134,12 +134,16 @@ export default function MimicaPlayControls() {
   }
 
   if (session.status === 'prep') {
+    const playerIndex = teamPlayers.findIndex(p => p.id === playerId);
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-[#111219] text-center">
          <h2 className="text-3xl font-black text-white mb-4 uppercase text-orange-500">¡Prepárate!</h2>
          <p className="text-gray-300 font-bold text-lg">El equipo {session.active_team} va a comenzar en breve.</p>
          {session.active_team === player.team_id && (
             <p className="mt-4 text-xl font-black text-green-400 animate-pulse">¡ES EL TURNO DE TU EQUIPO!</p>
+         )}
+         {playerIndex !== -1 && (
+            <div className="mt-4 text-orange-400 font-bold uppercase">Eres el Jugador #{playerIndex + 1}</div>
          )}
       </div>
     );
@@ -149,12 +153,14 @@ export default function MimicaPlayControls() {
      const isMyTeam = session.active_team === player.team_id;
      const amIMimer = gameState.active_mimer_id === player.id;
      const amIValidator = gameState.active_validator_id === player.id;
+     const playerIndex = teamPlayers.findIndex(p => p.id === playerId);
 
      if (isMyTeam) {
         if (amIMimer) {
            return (
              <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-[#111219] text-center">
                 <h2 className="text-2xl font-black text-gray-400 mb-2 uppercase">Tu turno de hacer mímica</h2>
+                {playerIndex !== -1 && <p className="text-orange-400 font-bold uppercase text-sm mb-4">Jugador #{playerIndex + 1}</p>}
                 <div className="bg-white/10 p-8 rounded-2xl border-4 border-orange-500 shadow-[0_0_30px_rgba(249,115,22,0.3)] my-8 w-full max-w-sm">
                    <h1 className="text-5xl font-black text-white uppercase tracking-widest break-words">
                      {gameState.current_word || '...'}
@@ -173,7 +179,8 @@ export default function MimicaPlayControls() {
         } else {
            return (
              <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-[#111219] text-center">
-                <h2 className="text-2xl font-black text-white mb-4 uppercase">Espera tu turno</h2>
+                <h2 className="text-2xl font-black text-white mb-2 uppercase">Espera tu turno</h2>
+                {playerIndex !== -1 && <p className="text-orange-400 font-bold uppercase text-sm mb-4">Jugador #{playerIndex + 1}</p>}
                 <p className="text-gray-400 font-bold">Alguien más de tu equipo está haciendo mímica ahora.</p>
                 <div className="mt-8 animate-pulse text-orange-500 text-6xl">
                   <FaHourglassHalf />

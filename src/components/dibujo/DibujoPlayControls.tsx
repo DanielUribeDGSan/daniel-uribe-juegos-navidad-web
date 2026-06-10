@@ -60,8 +60,8 @@ export default function DibujoPlayControls() {
      if(tp) setTeamPlayers(tp);
 
      // Subscriptions
-     supabase.channel(`p_sess_${sId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dibujo_sessions', filter: `id=eq.${sId}` }, (p) => setSession(p.new)).subscribe();
-     supabase.channel(`p_gs_${sId}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dibujo_game_state', filter: `session_id=eq.${sId}` }, (p) => setGameState(p.new)).subscribe();
+     supabase.channel(`p_sess_${s.id}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dibujo_sessions', filter: `id=eq.${s.id}` }, (p) => setSession((prev: any) => ({...prev, ...p.new}))).subscribe();
+     supabase.channel(`p_gs_${s.id}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dibujo_game_state', filter: `session_id=eq.${s.id}` }, (p) => setGameState((prev: any) => ({...prev, ...p.new}))).subscribe();
      supabase.channel(`p_team_${sId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'dibujo_players', filter: `session_id=eq.${sId}` }, async () => {
          // Re-fetch to ensure sorted accuracy
          const { data: newTp } = await supabase.from('dibujo_players').select('*').eq('session_id', sId).eq('team_id', tId).order('created_at', { ascending: true });
@@ -313,10 +313,10 @@ export default function DibujoPlayControls() {
       );
   }
 
-  // PLAYING STATE
-  const isMyTeam = session.active_team === teamId;
+   const isMyTeam = session.active_team === teamId;
+   const playerIndex = teamPlayers.findIndex(p => p.id === playerId);
 
-  if (!isMyTeam) {
+   if (!isMyTeam) {
      return (
         <div className="flex flex-col items-center justify-center min-h-screen p-8 text-center">
            <h2 className="text-3xl font-black text-gray-500 mb-4 uppercase">Equipo {session.active_team} Dibujando</h2>
@@ -326,17 +326,18 @@ export default function DibujoPlayControls() {
   }
 
   return (
-     <div className="flex flex-col min-h-screen">
-        <header className="bg-[#1a1b26] p-4 flex justify-between items-center border-b border-white/5">
-           <div className="flex items-center gap-2">
-              <span className="text-pink-500 font-black uppercase">{player.name}</span>
-           </div>
-           {isDrawer && (
-              <div className="bg-pink-500 text-white px-4 py-1 rounded-full text-sm font-black uppercase">
-                 Dibujando
-              </div>
-           )}
-        </header>
+      <div className="flex flex-col min-h-screen">
+         <header className="bg-[#1a1b26] p-4 flex justify-between items-center border-b border-white/5">
+            <div className="flex flex-col">
+               <span className="text-pink-500 font-black uppercase">{player.name}</span>
+               {playerIndex !== -1 && <span className="text-pink-400 text-xs font-bold uppercase">Jugador #{playerIndex + 1}</span>}
+            </div>
+            {isDrawer && (
+               <div className="bg-pink-500 text-white px-4 py-1 rounded-full text-sm font-black uppercase">
+                  Dibujando
+               </div>
+            )}
+         </header>
 
         {isDrawer ? (
            <div className="bg-pink-900/30 p-4 border-b border-pink-500/30 text-center">
