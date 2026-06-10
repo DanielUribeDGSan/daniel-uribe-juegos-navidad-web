@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "../../supabase";
+import { supabase } from "../../lib/supabase";
 import { FaPaintBrush } from "react-icons/fa";
 
 export default function DibujoJoinForm() {

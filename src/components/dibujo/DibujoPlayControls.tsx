@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "../../supabase";
+import { supabase } from "../../lib/supabase";
 import { FaPaintBrush, FaEraser, FaTrash, FaPaperPlane } from "react-icons/fa";
 
 export default function DibujoPlayControls() {
