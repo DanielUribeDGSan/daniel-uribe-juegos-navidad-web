@@ -25,6 +25,9 @@ export default function DibujoPlayControls() {
   const currentStroke = useRef<Stroke | null>(null);
   const broadcastChannelRef = useRef<any>(null);
 
+  const lastBroadcastPos = useRef<Point | null>(null);
+  const lastSendTime = useRef<number>(0);
+
   const [history, setHistory] = useState<Stroke[]>([]);
   const [redoQueue, setRedoQueue] = useState<Stroke[]>([]);
   
@@ -131,6 +134,7 @@ export default function DibujoPlayControls() {
      isDrawing.current = true;
      const pos = getPos(e);
      lastPos.current = pos;
+     lastBroadcastPos.current = pos;
      currentStroke.current = { color, size, points: [pos] };
      
      // Clear redo queue when new action starts
@@ -157,12 +161,20 @@ export default function DibujoPlayControls() {
      
      currentStroke.current.points.push(currentPos);
 
-     // Broadcast segment
-     broadcastChannelRef.current?.send({
-        type: 'broadcast',
-        event: 'draw',
-        payload: { p0: lastPos.current, p1: currentPos, color, size }
-     });
+     const now = Date.now();
+     if (now - lastSendTime.current > 100) {
+         try {
+             broadcastChannelRef.current?.send({
+                 type: 'broadcast',
+                 event: 'draw',
+                 payload: { p0: lastBroadcastPos.current, p1: currentPos, color, size }
+             });
+         } catch (err) {
+             console.error("Broadcast failed:", err);
+         }
+         lastBroadcastPos.current = currentPos;
+         lastSendTime.current = now;
+     }
 
      lastPos.current = currentPos;
   };
@@ -171,8 +183,12 @@ export default function DibujoPlayControls() {
      isDrawing.current = false;
      lastPos.current = null;
      if (currentStroke.current) {
-        setHistory(prev => [...prev, currentStroke.current!]);
+        const newHistory = [...historyRef.current, currentStroke.current];
+        setHistory(newHistory);
         currentStroke.current = null;
+        try {
+            broadcastChannelRef.current?.send({ type: 'broadcast', event: 'replace_state', payload: { strokes: newHistory } });
+        } catch (err) {}
      }
   };
 
@@ -209,7 +225,9 @@ export default function DibujoPlayControls() {
      setRedoQueue(prev => [...prev, popped]);
      
      redrawAllStrokes(newHistory);
-     broadcastChannelRef.current?.send({ type: 'broadcast', event: 'replace_state', payload: { strokes: newHistory } });
+     try {
+         broadcastChannelRef.current?.send({ type: 'broadcast', event: 'replace_state', payload: { strokes: newHistory } });
+     } catch (err) {}
   };
 
   const handleRedo = () => {
@@ -221,7 +239,9 @@ export default function DibujoPlayControls() {
      setHistory(newHistory);
      
      redrawAllStrokes(newHistory);
-     broadcastChannelRef.current?.send({ type: 'broadcast', event: 'replace_state', payload: { strokes: newHistory } });
+     try {
+         broadcastChannelRef.current?.send({ type: 'broadcast', event: 'replace_state', payload: { strokes: newHistory } });
+     } catch (err) {}
   };
 
   const handleClear = () => {
@@ -229,7 +249,9 @@ export default function DibujoPlayControls() {
      setRedoQueue([]);
      const ctx = canvasRef.current?.getContext('2d');
      if (ctx && canvasRef.current) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-     broadcastChannelRef.current?.send({ type: 'broadcast', event: 'clear', payload: {} });
+     try {
+         broadcastChannelRef.current?.send({ type: 'broadcast', event: 'clear', payload: {} });
+     } catch (err) {}
   };
 
   const handleRemoteDraw = (data: any) => {
@@ -257,11 +279,13 @@ export default function DibujoPlayControls() {
   const submitGuess = (e: React.FormEvent) => {
      e.preventDefault();
      if (!guess.trim() || isDrawer) return;
-     broadcastChannelRef.current?.send({
-        type: 'broadcast',
-        event: 'guess',
-        payload: { player_id: playerId, guess: guess.trim() }
-     });
+     try {
+         broadcastChannelRef.current?.send({
+            type: 'broadcast',
+            event: 'guess',
+            payload: { player_id: playerId, guess: guess.trim() }
+         });
+     } catch (err) {}
      setGuess("");
   };
 
