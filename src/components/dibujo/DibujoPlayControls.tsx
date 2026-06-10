@@ -18,6 +18,7 @@ export default function DibujoPlayControls() {
   const [color, setColor] = useState("#000000");
   const [size, setSize] = useState(0.01);
   const [guess, setGuess] = useState("");
+  const [turnTimeLeft, setTurnTimeLeft] = useState(60);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
@@ -91,6 +92,9 @@ export default function DibujoPlayControls() {
            const ctx = canvasRef.current?.getContext('2d');
            if (ctx && canvasRef.current) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
         }
+     });
+     channel.on('broadcast', { event: 'turn_time' }, (payload) => {
+         setTurnTimeLeft(payload.payload.time);
      });
      channel.subscribe();
      broadcastChannelRef.current = channel;
@@ -379,11 +383,16 @@ export default function DibujoPlayControls() {
 
   return (
       <div className="flex flex-col min-h-screen">
-         <header className="bg-[#1a1b26] p-4 flex justify-between items-center border-b border-white/5">
+         <header className="bg-[#1a1b26] p-4 flex justify-between items-center border-b border-white/5 relative">
             <div className="flex flex-col">
                <span className="text-pink-500 font-black uppercase">{player.name}</span>
                {playerIndex !== -1 && <span className="text-pink-400 text-xs font-bold uppercase">Jugador #{playerIndex + 1}</span>}
             </div>
+            
+            <div className={`absolute left-1/2 transform -translate-x-1/2 text-3xl font-black ${turnTimeLeft <= 10 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+               00:{turnTimeLeft.toString().padStart(2, '0')}
+            </div>
+
             {isDrawer && (
                <div className="bg-pink-500 text-white px-4 py-1 rounded-full text-sm font-black uppercase">
                   Dibujando
