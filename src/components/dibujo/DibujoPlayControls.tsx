@@ -114,6 +114,26 @@ export default function DibujoPlayControls() {
      return () => window.removeEventListener('resize', resizeCanvas);
   }, []);
 
+  // Prevent default touch gestures to ensure continuous drawing
+  useEffect(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const preventDefault = (e: TouchEvent) => {
+          if (e.target === canvas && e.touches.length === 1) {
+              e.preventDefault();
+          }
+      };
+
+      canvas.addEventListener('touchstart', preventDefault, { passive: false });
+      canvas.addEventListener('touchmove', preventDefault, { passive: false });
+
+      return () => {
+          canvas.removeEventListener('touchstart', preventDefault);
+          canvas.removeEventListener('touchmove', preventDefault);
+      };
+  }, [canvasRef.current]);
+
   const isDrawer = gameState?.active_drawer_id === playerId;
 
   // Drawing logic
@@ -157,6 +177,7 @@ export default function DibujoPlayControls() {
      ctx.strokeStyle = color;
      ctx.lineWidth = size * Math.min(w, h);
      ctx.lineCap = 'round';
+     ctx.lineJoin = 'round';
      ctx.stroke();
      
      currentStroke.current.points.push(currentPos);
