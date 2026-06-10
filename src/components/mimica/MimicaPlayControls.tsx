@@ -24,26 +24,30 @@ export default function MimicaPlayControls() {
     fetchInitialData();
 
     // Subscribe to session changes
-    const sessionSub = supabase.channel(`mimica_session_${sessionId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'mimica_sessions', filter: `id=eq.${sessionId}` }, (payload) => {
-        setSession((prev: any) => ({...prev, ...payload.new}));
+    const sessionSub = supabase.channel(`mimica_session_client_${sessionId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'mimica_sessions' }, (payload) => {
+         if (payload.new.id === sessionId) {
+            setSession(payload.new);
+         }
       }).subscribe();
 
     // Subscribe to game state changes
-    const stateSub = supabase.channel(`mimica_state_${sessionId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mimica_game_state', filter: `session_id=eq.${sessionId}` }, (payload) => {
-        if (payload.new) {
-           setGameState((prev: any) => ({...prev, ...payload.new}));
-        }
+    const gsSub = supabase.channel(`mimica_gs_client_${sessionId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'mimica_game_state' }, (payload) => {
+         if (payload.new.session_id === sessionId) {
+            setGameState(payload.new);
+         }
       }).subscribe();
       
     // Subscribe to player changes
     const playersSub = supabase.channel(`mimica_players_client_${sessionId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mimica_players', filter: `session_id=eq.${sessionId}` }, async () => {
-         const { data: newTp } = await supabase.from('mimica_players').select('*').eq('session_id', sessionId).order('joined_at', { ascending: true });
-         if (newTp) {
-             const tId = newTp.find(p => p.id === playerId)?.team_id;
-             if (tId) setTeamPlayers(newTp.filter(p => p.team_id === tId));
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mimica_players' }, async (p) => {
+         if (p.new?.session_id === sessionId || p.old?.session_id === sessionId) {
+             const { data: newTp } = await supabase.from('mimica_players').select('*').eq('session_id', sessionId).order('joined_at', { ascending: true });
+             if (newTp) {
+                 const tId = newTp.find(player => player.id === playerId)?.team_id;
+                 if (tId) setTeamPlayers(newTp.filter(player => player.team_id === tId));
+             }
          }
       }).subscribe();
 

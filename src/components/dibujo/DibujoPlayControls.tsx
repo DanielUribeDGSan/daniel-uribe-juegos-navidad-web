@@ -56,16 +56,23 @@ export default function DibujoPlayControls() {
      const { data: p } = await supabase.from('dibujo_players').select('*').eq('id', pId).single();
      if(p) setPlayer(p);
 
-     const { data: tp } = await supabase.from('dibujo_players').select('*').eq('session_id', sId).eq('team_id', tId).order('joined_at', { ascending: true });
+     const parsedTeamId = parseInt(tId, 10);
+     const { data: tp } = await supabase.from('dibujo_players').select('*').eq('session_id', sId).eq('team_id', parsedTeamId).order('joined_at', { ascending: true });
      if(tp) setTeamPlayers(tp);
 
      // Subscriptions
-     supabase.channel(`p_sess_${s.id}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dibujo_sessions', filter: `id=eq.${s.id}` }, (p) => setSession((prev: any) => ({...prev, ...p.new}))).subscribe();
-     supabase.channel(`p_gs_${s.id}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dibujo_game_state', filter: `session_id=eq.${s.id}` }, (p) => setGameState((prev: any) => ({...prev, ...p.new}))).subscribe();
-     supabase.channel(`p_team_${sId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'dibujo_players', filter: `session_id=eq.${sId}` }, async () => {
-         // Re-fetch to ensure sorted accuracy
-         const { data: newTp } = await supabase.from('dibujo_players').select('*').eq('session_id', s.id).eq('team_id', tId).order('joined_at', { ascending: true });
-         if (newTp) setTeamPlayers(newTp);
+     supabase.channel(`p_sess_${s.id}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dibujo_sessions' }, (p) => {
+        if (p.new.id === sId) setSession((prev: any) => ({...prev, ...p.new}));
+     }).subscribe();
+     supabase.channel(`p_gs_${s.id}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'dibujo_game_state' }, (p) => {
+        if (p.new.session_id === sId) setGameState((prev: any) => ({...prev, ...p.new}));
+     }).subscribe();
+     supabase.channel(`p_team_${sId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'dibujo_players' }, async (p) => {
+         if (p.new?.session_id === sId || p.old?.session_id === sId) {
+             const parsedTeamId = parseInt(tId, 10);
+             const { data: newTp } = await supabase.from('dibujo_players').select('*').eq('session_id', sId).eq('team_id', parsedTeamId).order('joined_at', { ascending: true });
+             if (newTp) setTeamPlayers(newTp);
+         }
      }).subscribe();
 
      // Broadcast
