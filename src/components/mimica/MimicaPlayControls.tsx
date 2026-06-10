@@ -40,7 +40,7 @@ export default function MimicaPlayControls() {
     // Subscribe to player changes
     const playersSub = supabase.channel(`mimica_players_client_${sessionId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'mimica_players', filter: `session_id=eq.${sessionId}` }, async () => {
-         const { data: newTp } = await supabase.from('mimica_players').select('*').eq('session_id', sessionId).order('created_at', { ascending: true });
+         const { data: newTp } = await supabase.from('mimica_players').select('*').eq('session_id', sessionId).order('joined_at', { ascending: true });
          if (newTp) {
              const tId = newTp.find(p => p.id === playerId)?.team_id;
              if (tId) setTeamPlayers(newTp.filter(p => p.team_id === tId));
@@ -72,7 +72,7 @@ export default function MimicaPlayControls() {
 
       // Get Team Players
       if (pData) {
-         const { data: tpData } = await supabase.from('mimica_players').select('*').eq('session_id', sessionId).eq('team_id', pData.team_id).order('created_at', { ascending: true });
+         const { data: tpData } = await supabase.from('mimica_players').select('*').eq('session_id', sessionId).eq('team_id', pData.team_id).order('joined_at', { ascending: true });
          if (tpData) setTeamPlayers(tpData);
       }
 
