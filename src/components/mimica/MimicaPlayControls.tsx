@@ -61,17 +61,24 @@ export default function MimicaPlayControls() {
   const fetchInitialData = async () => {
     try {
       // Get Player
-      const { data: pData, error: pErr } = await supabase.from('mimica_players').select('*').eq('id', playerId).single();
+      const { data: pData, error: pErr } = await supabase.from('mimica_players').select('*').eq('id', playerId).maybeSingle();
       if (pErr) throw pErr;
+      if (!pData) {
+         localStorage.removeItem('mimica_player_id');
+         const tId = urlParams?.get('team_id');
+         window.location.href = `/mimica?session_id=${sessionId}${tId ? `&team_id=${tId}` : ''}`;
+         return;
+      }
       setPlayer(pData);
 
       // Get Session
-      const { data: sData, error: sErr } = await supabase.from('mimica_sessions').select('*').eq('id', sessionId).single();
+      const { data: sData, error: sErr } = await supabase.from('mimica_sessions').select('*').eq('id', sessionId).maybeSingle();
       if (sErr) throw sErr;
+      if (!sData) throw new Error('La sesión no existe.');
       setSession(sData);
 
       // Get Game State
-      const { data: gsData } = await supabase.from('mimica_game_state').select('*').eq('session_id', sessionId).single();
+      const { data: gsData } = await supabase.from('mimica_game_state').select('*').eq('session_id', sessionId).maybeSingle();
       if (gsData) setGameState(gsData);
 
       // Get Team Players
