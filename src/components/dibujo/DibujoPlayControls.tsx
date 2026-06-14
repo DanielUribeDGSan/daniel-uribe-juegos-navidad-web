@@ -408,13 +408,42 @@ export default function DibujoPlayControls() {
         ) : (
            <div className="bg-[#20222f] p-4 border-b border-white/10 text-center flex flex-col items-center">
               <p className="text-sm font-bold text-gray-400 uppercase mb-2">Adivina la palabra:</p>
-              <div className="flex gap-2">
-                 {gameState.current_word?.split('').map((char: string, i: number) => (
-                    <div key={i} className={`w-8 h-10 flex items-end justify-center pb-1 ${char === ' ' ? '' : 'border-b-4 border-white'}`}>
-                       <span className="opacity-0">{char}</span>
-                    </div>
-                 ))}
+              
+              <div 
+                 className="flex flex-wrap gap-2 mb-4 cursor-text justify-center"
+                 onClick={() => document.getElementById('guess-input')?.focus()}
+              >
+                 {gameState.current_word?.split('').map((char: string, i: number) => {
+                    const isSpace = char === ' ';
+                    const guessedChar = guess[i] || '';
+                    return (
+                       <div key={i} className={`w-8 h-10 flex items-end justify-center pb-1 ${isSpace ? 'w-4' : 'border-b-4 border-white'}`}>
+                          <span className={`font-black text-2xl uppercase ${guessedChar ? 'text-white' : 'opacity-0'}`}>
+                             {guessedChar || char}
+                          </span>
+                       </div>
+                    );
+                 })}
               </div>
+
+              <form onSubmit={submitGuess} className="flex gap-2 w-full max-w-sm">
+                 <input 
+                    id="guess-input"
+                    type="text" 
+                    value={guess}
+                    maxLength={gameState.current_word?.length || 50}
+                    onChange={(e) => setGuess(e.target.value.toUpperCase())}
+                    placeholder="Escribe tu respuesta..."
+                    className="flex-1 bg-[#1a1b26] border-2 border-white/10 focus:border-pink-500 rounded-xl px-4 py-3 text-white text-lg font-bold outline-none uppercase text-center tracking-widest"
+                 />
+                 <button 
+                    type="submit" 
+                    disabled={guess.length !== (gameState.current_word?.length || 0)}
+                    className="bg-pink-500 disabled:opacity-50 disabled:bg-gray-500 hover:bg-pink-400 text-white w-14 rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(236,72,153,0.4)] disabled:shadow-none"
+                 >
+                    <FaPaperPlane />
+                 </button>
+              </form>
            </div>
         )}
 
@@ -473,18 +502,9 @@ export default function DibujoPlayControls() {
                  </div>
               </div>
            ) : (
-              <form onSubmit={submitGuess} className="mt-4 flex gap-2">
-                 <input 
-                    type="text" 
-                    value={guess}
-                    onChange={(e) => setGuess(e.target.value)}
-                    placeholder="Escribe tu respuesta..."
-                    className="flex-1 bg-[#1a1b26] border-2 border-white/10 focus:border-pink-500 rounded-xl px-4 py-3 text-white text-lg font-bold outline-none uppercase"
-                 />
-                 <button type="submit" className="bg-pink-500 hover:bg-pink-400 text-white w-14 rounded-xl flex items-center justify-center shadow-[0_0_15px_rgba(236,72,153,0.4)]">
-                    <FaPaperPlane />
-                 </button>
-              </form>
+               <div className="mt-4 flex gap-2 items-center justify-center text-gray-400 font-bold">
+                  ¡Adivina la palabra en la parte superior!
+               </div>
            )}
         </div>
      </div>
